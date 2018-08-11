@@ -2,16 +2,18 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
 import logging
 import glob
 import shutil
 import argparse
+import textwrap
 
 logging.basicConfig(
     format='[%(levelname)s] >>> %(message)s',
-    level=logging.DEBUG,
-    filename='logfile.txt',
-    filemode='w'
+    level=logging.INFO,
+    # filename='logfile.txt',
+    # filemode='w'
 )
 
 
@@ -24,7 +26,7 @@ class SonyAlphaFileSystemHandler(object):
         self.src_dir = src_dir
         self.dest_dir = dest_dir
 
-    def get_files(self, file_extension):
+    def extract_files(self, file_extension):
         """
         Move all files of particular type to proper destination dir
         """
@@ -33,8 +35,7 @@ class SonyAlphaFileSystemHandler(object):
 
         file_format_dest_dirs = {'JPG': os.path.join(self.dest_dir, 'Photos', 'JPG'),
                                  'ARW': os.path.join(self.dest_dir, 'Photos', 'RAW'),
-                                 'MTS': os.path.join(self.dest_dir, 'Movies'),
-        }
+                                 'MTS': os.path.join(self.dest_dir, 'Movies')}
 
         if file_extension in file_format_dest_dirs:
             file_format_dest_dir = file_format_dest_dirs[file_extension]
@@ -57,35 +58,75 @@ class SonyAlphaFileSystemHandler(object):
         pass
 
 
-def parse_cmd_line_arguments():
+def configure_arg_parser():
     """
-    Parse command line arguments passed to the script
+    Configure command line argument parser
     """
 
-    cmd_line_arg_parser = argparse.ArgumentParser(description='Sony Alpha File System Handler')
+    class ArgParser(argparse.ArgumentParser):
+        def error(self, message):
+            if len(sys.argv) == 1:
+                self.print_help()
+            else:
+                sys.stderr.write('error: %s\n' % message)
+            sys.exit(1)
 
-    cmd_line_arg_parser.add_argument('--reorganise', action='store_true', required=False,
-                                     help='reorganise sony alpha file structure')
-    cmd_line_arg_parser.add_argument('--src_dir', type=str, required=False,
-                                     help='source directory path')
-    cmd_line_arg_parser.add_argument('--dest_dir', type=str, required=False,
-                                     help='destination directory path')
+    arg_parser = ArgParser(formatter_class=argparse.RawTextHelpFormatter,
+                           description='Sony Alpha File System Utility',
+                           epilog=textwrap.dedent('''
+                           exmamples:
+                           - python sony_a6000_utility.py --reorganise /media/sd /home/pio/foto
+                           - python sony_a6000_utility.py --delete-arw /home/pio/foto/jpg /home/pio/foto/arw
+                           '''),
+                           )
 
-    return cmd_line_arg_parser.parse_args()
+    excl_group = arg_parser.add_mutually_exclusive_group(required=True, )
+
+    arg_parser.add_argument('-d', '--debug',
+                            action='store_true',
+                            required=False,
+                            help='enable debug mode')
+
+    excl_group.add_argument('-r', '--reorganise',
+                            action='store_true',
+                            help=textwrap.dedent('''\
+                            reorganise camera file structure
+                            positional arguments:
+                            src_dir  - must point to directory containing Sony Alpha file structure
+                            dest_dir - must point to target directory for new file structure
+                            '''))
+    excl_group.add_argument('-a', '--delete-arw',
+                            action='store_true',
+                            help=textwrap.dedent('''\
+                            delete ARW files without corresponding JPGs
+                            positional arguments:
+                            src_dir  - must point to directory containing JPG files
+                            dest_dir - must point to directory containing ARW files
+                            '''))
+
+    arg_parser.add_argument('src_dir',
+                            type=str,
+                            help='source directory path')
+
+    arg_parser.add_argument('dest_dir',
+                            type=str,
+                            # nargs='?',
+                            help='destination directory path')
+
+    return arg_parser
 
 
 if __name__ == '__main__':
 
-    arguments = parse_cmd_line_arguments()
+    parser = configure_arg_parser()
+    arguments = parser.parse_args()
+
+    if arguments.debug:
+        logging.basicConfig(level=logging.DEBUG)
 
     if arguments.reorganise:
-        print('The file structure will be reorganised')
-        # alpha = SonyAlphaFileSystemHandler(arguments.src_dir, arguments.dest_dir)
-        # alpha.get_files('JPG')
-        # alpha.get_files('ARW')
-        # alpha.get_files('MTS')
-
-
-
-
-# --src_dir /media/pio/Data&Foto_Slave/SD_2 --dest_dir /media/pio/Data&Foto_Slave/new_structure
+        logging.info('Reorganising file structure...')
+        alpha = SonyAlphaFileSystemHandler(arguments.src_dir, arguments.dest_dir)
+        alpha.get_files('JPG')
+        alpha.get_files('ARW')
+        alpha.get_files('MTS')
