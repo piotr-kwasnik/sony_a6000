@@ -43,19 +43,57 @@ class SonyAlphaFileSystemHandler(object):
             logging.error('File format not supported!')
             exit(1)
 
-        if not os.path.exists(file_format_dest_dir):
-            os.makedirs(file_format_dest_dir)
+        if os.path.exists(file_format_dest_dir):
+            logging.error('Destination directory already exists...')
+            exit(1)
+        else:
+            logging.debug('Crating destination directory: {}'.format(file_format_dest_dir))
+            if not arguments.dry_run:
+                os.makedirs(file_format_dest_dir)
 
         for src_file in glob.iglob('{}/**/*.{}'.format(self.src_dir, file_extension), recursive=True):
-            logging.debug('Moving file: {} -> {}'.format(src_file, file_format_dest_dir))
-            shutil.move(src_file, file_format_dest_dir)
+            dest_file = os.path.join(file_format_dest_dir, os.path.basename(src_file))
+            logging.debug('Moving file: {} -> {}'.format(src_file, dest_file))
+
+            tmp_dest_file = self._check_dest_file(dest_file)
+
+            if dest_file != tmp_dest_file:
+                dest_file = tmp_dest_file
+                logging.debug('Moving file (update): {} -> {}'.format(src_file, dest_file))
+
+            if not arguments.dry_run:
+                shutil.move(src_file, dest_file)
+
+    def _check_dest_file(self, file_path):
+        if os.path.exists(file_path):
+            logging.critical('Destination path already exists: {}'.format(file_path))
+
+            file_dir = os.path.dirname(file_path)
+            file_name = os.path.basename(file_path)
+            file_base, file_extension = os.path.splitext(file_name)
+
+            # Incrementing the digit part of file name
+            if file_extension == '.MTS':
+                # 00000.MTS -> 00001.MTS
+                new_file_name = '{:05d}.MTS'.format(int(file_base) + 1)
+            else:
+                raise NotImplementedError
+                # DSC05366.JPG
+                # DSC05366.ARW
+
+            new_file_path = os.path.join(file_dir, new_file_name)
+            logging.debug('Checking {}'.format(new_file_path))
+            return self._check_dest_file(new_file_path)
+
+        else:
+            return file_path
 
     def delete_pointless_raws(self):
         """
         Delete all ARW files without corresponding JPGs
         """
 
-        pass
+        raise NotImplementedError
 
 
 def configure_arg_parser():
@@ -87,6 +125,11 @@ def configure_arg_parser():
                             required=False,
                             help='enable debug mode')
 
+    arg_parser.add_argument('-n', '--dry_run',
+                            action='store_true',
+                            required=False,
+                            help='enable dry run mode')
+
     excl_group.add_argument('-r', '--reorganise',
                             action='store_true',
                             help=textwrap.dedent('''\
@@ -95,7 +138,7 @@ def configure_arg_parser():
                             src_dir  - must point to directory containing Sony Alpha file structure
                             dest_dir - must point to target directory for new file structure
                             '''))
-    excl_group.add_argument('-a', '--delete-arw',
+    excl_group.add_argument('-a', '--delete_arw',
                             action='store_true',
                             help=textwrap.dedent('''\
                             delete ARW files without corresponding JPGs
@@ -122,11 +165,19 @@ if __name__ == '__main__':
     arguments = parser.parse_args()
 
     if arguments.debug:
-        logging.basicConfig(level=logging.DEBUG)
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    if arguments.dry_run:
+        logging.info('Dry run mode enabled...')
 
     if arguments.reorganise:
         logging.info('Reorganising file structure...')
         alpha = SonyAlphaFileSystemHandler(arguments.src_dir, arguments.dest_dir)
-        alpha.get_files('JPG')
-        alpha.get_files('ARW')
-        alpha.get_files('MTS')
+        alpha.extract_files('JPG')
+        alpha.extract_files('ARW')
+        alpha.extract_files('MTS')
+
+    if arguments.delete_arw:
+        logging.info('Deleting pointless ARW files...')
+        alpha = SonyAlphaFileSystemHandler(arguments.src_dir, arguments.dest_dir)
+        alpha.delete_pointless_raws()
