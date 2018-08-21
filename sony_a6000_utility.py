@@ -53,8 +53,7 @@ class SonyAlphaFileSystemHandler(object):
 
         for src_file in glob.iglob('{}/**/*.{}'.format(self.src_dir, file_extension), recursive=True):
             dest_file = os.path.join(file_format_dest_dir, os.path.basename(src_file))
-            logging.debug('Moving file: {} -> {}'.format(src_file, dest_file))
-
+            logging.debug('Checking existence of destination file: {}'.format(dest_file))
             tmp_dest_file = self._check_dest_file(dest_file)
 
             if dest_file != tmp_dest_file:
@@ -93,7 +92,17 @@ class SonyAlphaFileSystemHandler(object):
         Delete all ARW files without corresponding JPGs
         """
 
-        raise NotImplementedError
+        logging.debug('Running delete_pointless_raws()')
+
+        for dest_file in glob.iglob('{}/*.{}'.format(self.dest_dir, 'ARW')):
+            dest_file_name = os.path.basename(dest_file)
+            dest_file_base, dest_file_extension = os.path.splitext(dest_file_name)
+            jpg_equivalent_file = os.path.join(self.src_dir, '{}.{}'.format(dest_file_base, 'JPG'))
+
+            if not os.path.exists(jpg_equivalent_file):
+                logging.debug('Deleting ARW file without corresponding JPG: {}'.format(dest_file))
+                if not arguments.dry_run:
+                    os.remove(dest_file)
 
 
 def configure_arg_parser():
@@ -109,16 +118,16 @@ def configure_arg_parser():
                 sys.stderr.write('error: %s\n' % message)
             sys.exit(1)
 
+    epilog = textwrap.dedent('''
+             exmamples:
+             - python sony_a6000_utility.py --reorganise /media/sd /home/pio/album
+             - python sony_a6000_utility.py --delete-arw /home/pio/album/Photos/JPG /home/pio/album/Photos/RAW''')
+
     arg_parser = ArgParser(formatter_class=argparse.RawTextHelpFormatter,
                            description='Sony Alpha File System Utility',
-                           epilog=textwrap.dedent('''
-                           exmamples:
-                           - python sony_a6000_utility.py --reorganise /media/sd /home/pio/foto
-                           - python sony_a6000_utility.py --delete-arw /home/pio/foto/jpg /home/pio/foto/arw
-                           '''),
-                           )
+                           epilog=epilog)
 
-    excl_group = arg_parser.add_mutually_exclusive_group(required=True, )
+    excl_group = arg_parser.add_mutually_exclusive_group(required=True)
 
     arg_parser.add_argument('-d', '--debug',
                             action='store_true',
@@ -138,6 +147,7 @@ def configure_arg_parser():
                             src_dir  - must point to directory containing Sony Alpha file structure
                             dest_dir - must point to target directory for new file structure
                             '''))
+
     excl_group.add_argument('-a', '--delete_arw',
                             action='store_true',
                             help=textwrap.dedent('''\
