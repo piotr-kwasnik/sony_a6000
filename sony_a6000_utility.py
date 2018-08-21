@@ -3,11 +3,13 @@
 
 import os
 import sys
+import time
 import logging
 import glob
 import shutil
 import argparse
 import textwrap
+import collections
 
 logging.basicConfig(
     format='[%(levelname)s] >>> %(message)s',
@@ -51,17 +53,32 @@ class SonyAlphaFileSystemHandler(object):
             if not arguments.dry_run:
                 os.makedirs(file_format_dest_dir)
 
-        for src_file in glob.iglob('{}/**/*.{}'.format(self.src_dir, file_extension), recursive=True):
-            dest_file = os.path.join(file_format_dest_dir, os.path.basename(src_file))
-            logging.debug('Checking existence of destination file: {}'.format(dest_file))
-            tmp_dest_file = self._check_dest_file(dest_file)
+        glob_pattern = '{}/**/*.{}'.format(self.src_dir, file_extension)
+        file_paths = [src_file for src_file in glob.iglob(glob_pattern, recursive=True)]
+        # file_paths.sort(key=lambda x: os.path.getmtime(x))
+        file_paths.sort(key=os.path.getmtime)
 
-            if dest_file != tmp_dest_file:
-                dest_file = tmp_dest_file
-                logging.debug('Moving file (update): {} -> {}'.format(src_file, dest_file))
+        file_names = [os.path.basename(path) for path in file_paths]
 
-            if not arguments.dry_run:
-                shutil.move(src_file, dest_file)
+        if len(file_names) == len(set(file_names)):
+            logging.debug('There are no duplicates for {}'.format(file_extension))
+        else:
+            print(['{}->{}'.format(item, count) for item, count in collections.Counter(file_names).items() if count > 1])
+
+        for path in file_paths:
+            stat_info = os.stat(path)
+            logging.debug('File {} --- created ---> {}'.format(path, time.ctime(stat_info.st_mtime)))
+
+            # dest_file = os.path.join(file_format_dest_dir, os.path.basename(src_file))
+            # logging.debug('Checking existence of destination file: {}'.format(dest_file))
+            # tmp_dest_file = self._check_dest_file(dest_file)
+            #
+            # if dest_file != tmp_dest_file:
+            #     dest_file = tmp_dest_file
+            #     logging.debug('Moving file (update): {} -> {}'.format(src_file, dest_file))
+            #
+            # if not arguments.dry_run:
+            #     shutil.move(src_file, dest_file)
 
     def _check_dest_file(self, file_path):
         if os.path.exists(file_path):
@@ -183,11 +200,14 @@ if __name__ == '__main__':
     if arguments.reorganise:
         logging.info('Reorganising file structure...')
         alpha = SonyAlphaFileSystemHandler(arguments.src_dir, arguments.dest_dir)
-        alpha.extract_files('JPG')
-        alpha.extract_files('ARW')
+        # alpha.extract_files('JPG')
+        # alpha.extract_files('ARW')
         alpha.extract_files('MTS')
 
     if arguments.delete_arw:
         logging.info('Deleting pointless ARW files...')
         alpha = SonyAlphaFileSystemHandler(arguments.src_dir, arguments.dest_dir)
         alpha.delete_pointless_raws()
+
+
+os.scandir()
