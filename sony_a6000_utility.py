@@ -61,30 +61,16 @@ class SonyAlphaFileSystemHandler(object):
         src_files = [src_file for src_file in glob.iglob(glob_pattern, recursive=True)]
         src_files.sort(key=os.path.getmtime)
 
-        # Constructing destination file paths, handling duplicate names
-        dest_files, used_increments = ([], [])
+        file_increment = 0
+        dest_files = []
         for src_file in src_files:
             file_name = os.path.basename(src_file)
             file_base, file_extension = os.path.splitext(file_name)
-            dest_file = os.path.join(file_format_dest_dir, file_name)
-
-            # Finding duplicates
-            if dest_file in dest_files:
-                new_increment = '{:05d}'.format(int(max(used_increments)) + 1)
-                if file_extension == '.MTS':
-                    new_file_name = '{}.{}'.format(new_increment, file_extension )
-                else:
-                    new_file_name = 'DSC{}.{}'.format(new_increment, file_extension )
-                # Changing destination file cause duplicate found
-                dest_file = os.path.join(file_format_dest_dir, new_file_name)
-                dest_files.append(dest_file)
-                used_increments.append(new_increment)
-            else:
-                dest_files.append(dest_file)
-                if file_extension == '.MTS':
-                    used_increments.append(file_base)
-                # else:
-                #     raise NotImplementedError
+            new_increment = '{:05d}'.format(file_increment + 1)
+            dest_file_name = '{}{}'.format(new_increment, file_extension)
+            file_increment += 1
+            dest_file = os.path.join(file_format_dest_dir, dest_file_name)
+            dest_files.append(dest_file)
 
         for src_file, dest_file in zip(src_files, dest_files):
             logging.debug('Moving file: {} -> {}'.format(src_file, dest_file))
