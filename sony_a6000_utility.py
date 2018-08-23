@@ -3,13 +3,11 @@
 
 import os
 import sys
-import time
 import logging
 import glob
 import shutil
 import argparse
 import textwrap
-import collections
 
 logging.basicConfig(
     format='[%(levelname)s] >>> %(message)s',
@@ -31,6 +29,11 @@ class SonyAlphaFileSystemHandler(object):
     def extract_files(self, file_extension):
         """
         Move all files of particular type to proper destination dir
+
+        Example files:
+        00000.MTS
+        DSC03483.ARW
+        DSC03483.JPG
         """
 
         logging.debug('Running get_files() for: {}'.format(file_extension))
@@ -45,64 +48,48 @@ class SonyAlphaFileSystemHandler(object):
             logging.error('File format not supported!')
             exit(1)
 
-        if os.path.exists(file_format_dest_dir):
-            logging.error('Destination directory already exists...')
-            exit(1)
-        else:
+        if not os.path.exists(file_format_dest_dir):
             logging.debug('Crating destination directory: {}'.format(file_format_dest_dir))
             if not arguments.dry_run:
                 os.makedirs(file_format_dest_dir)
+        else:
+            logging.error('Destination directory already exists...')
+            exit(1)
 
+        # Getting source file paths
         glob_pattern = '{}/**/*.{}'.format(self.src_dir, file_extension)
-        file_paths = [src_file for src_file in glob.iglob(glob_pattern, recursive=True)]
-        # file_paths.sort(key=lambda x: os.path.getmtime(x))
-        file_paths.sort(key=os.path.getmtime)
+        src_files = [src_file for src_file in glob.iglob(glob_pattern, recursive=True)]
+        src_files.sort(key=os.path.getmtime)
 
-        file_names = [os.path.basename(path) for path in file_paths]
-
-        if len(file_names) == len(set(file_names)):
-            logging.debug('There are no duplicates for {}'.format(file_extension))
-        else:
-            print(['{}->{}'.format(item, count) for item, count in collections.Counter(file_names).items() if count > 1])
-
-        for path in file_paths:
-            stat_info = os.stat(path)
-            logging.debug('File {} --- created ---> {}'.format(path, time.ctime(stat_info.st_mtime)))
-
-            # dest_file = os.path.join(file_format_dest_dir, os.path.basename(src_file))
-            # logging.debug('Checking existence of destination file: {}'.format(dest_file))
-            # tmp_dest_file = self._check_dest_file(dest_file)
-            #
-            # if dest_file != tmp_dest_file:
-            #     dest_file = tmp_dest_file
-            #     logging.debug('Moving file (update): {} -> {}'.format(src_file, dest_file))
-            #
-            # if not arguments.dry_run:
-            #     shutil.move(src_file, dest_file)
-
-    def _check_dest_file(self, file_path):
-        if os.path.exists(file_path):
-            logging.critical('Destination path already exists: {}'.format(file_path))
-
-            file_dir = os.path.dirname(file_path)
-            file_name = os.path.basename(file_path)
+        # Constructing destination file paths, handling duplicate names
+        dest_files, used_increments = ([], [])
+        for src_file in src_files:
+            file_name = os.path.basename(src_file)
             file_base, file_extension = os.path.splitext(file_name)
+            dest_file = os.path.join(file_format_dest_dir, file_name)
 
-            # Incrementing the digit part of file name
-            if file_extension == '.MTS':
-                # 00000.MTS -> 00001.MTS
-                new_file_name = '{:05d}.MTS'.format(int(file_base) + 1)
+            # Finding duplicates
+            if dest_file in dest_files:
+                new_increment = '{:05d}'.format(int(max(used_increments)) + 1)
+                if file_extension == '.MTS':
+                    new_file_name = '{}.{}'.format(new_increment, file_extension )
+                else:
+                    new_file_name = 'DSC{}.{}'.format(new_increment, file_extension )
+                # Changing destination file cause duplicate found
+                dest_file = os.path.join(file_format_dest_dir, new_file_name)
+                dest_files.append(dest_file)
+                used_increments.append(new_increment)
             else:
-                raise NotImplementedError
-                # DSC05366.JPG
-                # DSC05366.ARW
+                dest_files.append(dest_file)
+                if file_extension == '.MTS':
+                    used_increments.append(file_base)
+                # else:
+                #     raise NotImplementedError
 
-            new_file_path = os.path.join(file_dir, new_file_name)
-            logging.debug('Checking {}'.format(new_file_path))
-            return self._check_dest_file(new_file_path)
-
-        else:
-            return file_path
+        for src_file, dest_file in zip(src_files, dest_files):
+            logging.debug('Moving file: {} -> {}'.format(src_file, dest_file))
+            if not arguments.dry_run:
+                shutil.move(src_file, dest_file)
 
     def delete_pointless_raws(self):
         """
@@ -200,14 +187,11 @@ if __name__ == '__main__':
     if arguments.reorganise:
         logging.info('Reorganising file structure...')
         alpha = SonyAlphaFileSystemHandler(arguments.src_dir, arguments.dest_dir)
-        # alpha.extract_files('JPG')
-        # alpha.extract_files('ARW')
+        alpha.extract_files('JPG')
+        alpha.extract_files('ARW')
         alpha.extract_files('MTS')
 
     if arguments.delete_arw:
         logging.info('Deleting pointless ARW files...')
         alpha = SonyAlphaFileSystemHandler(arguments.src_dir, arguments.dest_dir)
         alpha.delete_pointless_raws()
-
-
-os.scandir()
